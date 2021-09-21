@@ -1,0 +1,66 @@
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: api
+  namespace: abtesting
+spec:
+  # ingress reference
+  provider: nginx
+  ingressRef:
+    apiVersion: extensions/v1beta1
+    kind: Ingress
+    name: api
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  service:
+    port: 8080
+  analysis:
+    interval: 1m
+    threshold: 10
+    iterations: 10
+    match:
+        # curl -H 'X-Canary: always' http://app.example.com
+        - headers:
+            x-canary:
+              exact: "always"
+        # curl -b 'canary=always' http://app.example.com
+        - headers:
+            cookie:
+              exact: "canary"
+    # Linkerd Prometheus checks
+    # metrics:
+    # - name: request-success-rate
+    #   thresholdRange:
+    #     min: 99
+    #   interval: 1m
+    # - name: request-duration
+    #   thresholdRange:
+    #     max: 500
+    #   interval: 30s
+    metrics:
+    - name: "404s percentage"
+      threshold: 3
+      query: |
+        100 - sum(
+            rate(
+                response_total{
+                    namespace="test",
+                    deployment="podinfo",
+                    status_code!="404",
+                    direction="inbound"
+                }[1m]
+            )
+        )
+        /
+        sum(
+            rate(
+                response_total{
+                    namespace="test",
+                    deployment="podinfo",
+                    direction="inbound"
+                }[1m]
+            )
+        )
+        * 100
